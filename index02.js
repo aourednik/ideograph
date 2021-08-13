@@ -25,7 +25,6 @@ let loadingCountries = d3.select("#loadingCountries");
 let countriesLoaded = d3.select("#countriesLoaded");
 let loadingGraph = d3.select("#loadingGraph");
 let constructingGraph = d3.select("#constructingGraph");
-let updatingGraph = d3.select("#updatingGraph");
 let loadinginfotext = "";
 let graph, graphstore ; // neccessary globals
 
@@ -94,63 +93,44 @@ let initialCountries = [ // Europe
     "wd:Q9676" // Isle of Man
 ];
 
-let reqGraph = makeGraphReq(initialCountries);
-let reqGraphExtra = makeGraphExtraReq(initialCountries);
-getGraphData(reqGraph,reqGraphExtra);
+makeCountriesGraph(initialCountries);
 
-function makeGraphReq(countries) {
+function makeCountriesGraph(countries) {
     // VALUES ?ideatype { wd:Q12909644 wd:Q179805 wd:Q7257 wd:Q5333510}  #  ideologie ou philosophie politique ou économique
     // ?linkTo wdt:P31 ?ideatype .
     sparql = `
         SELECT DISTINCT ?item ?itemLabel ?country ?countryLabel ?linkTo ?linkToLabel
         WHERE {
-            ?item wdt:P1142 ?linkTo . # alternative path makes link to ideology superclass
-            ?linkTo wdt:P31 wd:Q12909644 . # take "political ideology" only
+            ?item wdt:P1142 | wdt:P1142/wdt:P279* ?linkTo . # alternative path makes link to ideology superclass
+            ?linkTo wdt:P31 wd:Q12909644 .
             VALUES ?type { wd:Q7278  wd:Q24649 } # filter by these types of political actors
             ?item wdt:P31 ?type .
             VALUES ?country { ${countries.join(" ")} } #filter by selected countries
             ?item wdt:P17 ?country .
             MINUS { ?item wdt:P576 ?abolitionDate } # exclude abolished parties
+            MINUS { ?country wdt:P576 ?countryAbolitionDate }. # exclude abolished countries
             SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en" . }
         } 
     `;//.replaceAll("\n"," ").replaceAll("  "," ");
     let req = endpoint + encodeURIComponent(sparql);
-    return req ;
+    getGraphData(req);
 }
 
-function makeGraphExtraReq(countries) {
-    sparql = `
-    SELECT DISTINCT ?linkTo ?linkToLabel ?superLinkTo ?superLinkToLabel
-    WHERE {
-      ?item wdt:P1142 ?linkTo . # alternative path makes link to ideology superclass
-      ?linkTo wdt:P279+ ?superLinkTo .
-      ?superLinkTo wdt:P31|wdt:P279 wd:Q12909644 . # take political ideology only
-      VALUES ?type { wd:Q7278  wd:Q24649 } # filter by these types of political actors
-      ?item wdt:P31|wdt:P279 ?type .
-      ?item wdt:P17 ?country . 
-      MINUS { ?item wdt:P576 ?abolitionDate } # exclude abolished parties
-      SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en" . }
-      FILTER (?country IN (${countries.join(", ")}) ) # here, this is faster than using VALUES. Why?
-    } 
-    `;
-    let req = endpoint + encodeURIComponent(sparql);
-    return req ;
-}
-
-async function fetchWikiData(req) {
-    let response = await fetch(req, {headers: { "Accept": "text/csv"}});  
-    let text = await response.text(); 
-    let data = Papa.parse(text,{header:true});
-    data = data.data;
-    return data ;
-}
 
 // Constructs a list of countnries to choose from. 
 // On first run, launch graph construction.
-async function getCountryList(req) { 
+async function getCountryList(req) {   
     loadinginfo.style('display', 'block');
-    loadingCountries.style('display', 'block');  
-    let countries = await fetchWikiData(req);
+    loadingCountries.style('display', 'block');
+    let response = await fetch(req, {
+        headers: {
+            "Accept": "text/csv"
+        }
+    });  
+    let text = await response.text();  
+    // let countries = csvToArray(text);
+    let countries = Papa.parse(text,{header:true});
+    countries = countries.data;
     // console.log(countries);
     countries.sort((a,b) => (a["countryLabel"] > b["countryLabel"]) ? 1 : ((b["countryLabel"] > a["countryLabel"]) ? -1 : 0))
     let countriesdiv = d3.select("#countryselector");
@@ -164,7 +144,7 @@ async function getCountryList(req) {
             .attr("name", c["countryLabel"])
             .attr("id",cid)
             .attr("value", cval) 
-            //.attr("onclick","updateGraph()")
+            .attr("onclick","updateGraph()")
         ;
         newdiv
             .append("label")
@@ -179,30 +159,32 @@ async function getCountryList(req) {
     countriesLoaded.style('display', 'block');
 }
 
-let dataExtra; 
-let parties = []
-async function getGraphData(req, reqExtra) {   
+
+async function getGraphData(req) {   
     loadinginfo.style('display', 'block');
     loadingGraph.style('display', 'block');
-    let data = await fetchWikiData(req); 
-    loadingGraph.text("Fetching extra graph links from WikiData...");
-    // console.log("Fetching Extra Links");
-    dataExtra = await fetchWikiData(reqExtra); 
-    console.log(dataExtra);
-    // let parties = []; // for later filtering out ideology nodes with no incoming parties
+    let response = await fetch(req, {
+        headers: {
+            "Accept": "text/csv"
+        }
+    });  
+    let text = await response.text();  
+    // let data = csvToArray(text);
+    let data = Papa.parse(text,{header:true});
+    data = data.data;
+    console.log(data);
     let nodes = [];
     let links = [];
     data.forEach((line)=>{ 
         if (typeof line.item !== "undefined" & typeof line.linkTo !== "undefined") { 
-            parties.push(line.item.replace("http://www.wikidata.org/entity/","wd:"));
             nodes.push({
                 id: line.item.replace("http://www.wikidata.org/entity/","wd:"), 
-                label : line.itemLabel + " (" + line.countryLabel + ")" ,
+                label : line.itemLabel,
                 group : 1    
             }) ;
             nodes.push({
                 id: line.linkTo.replace("http://www.wikidata.org/entity/","wd:"), 
-                label : line["linkToLabel"],
+                label : line["linkToLabel"], // might need to remove \r from the csv in csvToArray,
                 group : 2    
             }) ;
             links.push({
@@ -212,36 +194,33 @@ async function getGraphData(req, reqExtra) {
             });
         }
     });
-    dataExtra.forEach((line)=>{ 
-        if (typeof line.linkTo !== "undefined" & typeof line.superLinkTo !== "undefined") { 
-            nodes.push({
-                id: line.linkTo.replace("http://www.wikidata.org/entity/","wd:"), 
-                label : line.linkToLabel,
-                group : 2    
-            }) ;
-            nodes.push({
-                id: line.superLinkTo.replace("http://www.wikidata.org/entity/","wd:"), 
-                label : line.superLinkToLabel, // might need to remove \r from the csv in csvToArray,
-                group : 2    
-            }) ;
-            links.push({
-                source: line.linkTo.replace("http://www.wikidata.org/entity/","wd:"),
-                target: line.superLinkTo.replace("http://www.wikidata.org/entity/","wd:"),
-                value: 0.8
-            });
-        }
-    });
     nodes = nodes.filter((e, i) => nodes.findIndex(a => a.id === e.id) === i); // get only unique nodes.
-    // graph.links.filter(l => parties.includes(l.source.id))
-    // we'll filter the links later with isNaN(radisu)
     graph = {links:links,nodes:nodes};
     // store the full graph for later use
     graphstore = Object.assign({}, graph);
     drawGraph(graph);
 }
 
+/*
+function csvToArray(str, delimiter = ",") {
+    const headers = str.slice(0, str.indexOf("\n")).split(delimiter);
+    const rows = str.slice(str.indexOf("\n") + 1).split("\n");
+    const arr = rows.map(function (row) {
+        const values = row.split(delimiter);
+        const el = headers.reduce(function (object, header, index) {
+            object[header] = values[index];
+            return object;
+        }, {});
+        return el;
+    });
+    return arr;
+}
+*/
+
 
 let width = screen.availWidth, height = screen.availHeight;
+
+
 function colour(num){
     if (num > 1) return 0xFF0000
     return 11454440 ;
@@ -283,19 +262,12 @@ function drawGraph(graph) {
         .force('link')
           .links(graph.links);
 
-    // count incoming links to set node sizes, and remove nodes with no radius, stemming from super-ideologies
+    // count incoming links to set node sizes
     graph.links.forEach(function(link){
         if (!link.target["linkCount"]) link.target["linkCount"] = 0;
         link.target["linkCount"]++;    
     });
-    graph.nodes.forEach((node) => {
-        node.radius = node.group < 2 ? 3 : 3 + Math.sqrt(node.linkCount);
-    });
-    graph.links = graph.links.filter(l => ! isNaN(l.source.radius));
-    // remove freely floating nodes
-    graph.nodes = graph.nodes.filter(n =>  graph.links.filter(l => 
-        l.source == n | l.target == n
-    ).length > 0 );
+
 
     // Render with PIXI ------
 
@@ -316,14 +288,15 @@ function drawGraph(graph) {
         node.gfx = new PIXI.Graphics();
         node.gfx.lineStyle(0.5, 0xFFFFFF);
         node.gfx.beginFill(colour(node.group));
+        node.radius = node.group < 2 ? 3 : 3 + Math.sqrt(node.linkCount);
         node.gfx.drawCircle(0, 0, node.radius );
         node.gfx.interactive = true;
         node.gfx.hitArea = new PIXI.Circle(0, 0, node.radius);
         node.gfx.mouseover = function(ev) { 
             // TODO for some reason, the attached event does not work whenn the graph is updated 
             console.log(node);
-            let nodex = node.x + 5;
-            let nodey = node.y - 5;
+            let nodex = node.x + 10;
+            let nodey = node.y - 10;
             d3.select("#label")
                 .attr("style", "left:"+nodex+"px;top:"+nodey+"px;")
                 .select("a")
@@ -350,7 +323,6 @@ function drawGraph(graph) {
             containerIdeologies.addChild(node.lgfx);
         }
     });
-
 
     containerLinks.zIndex = 0;
     containerIdeologies.zIndex = 2;
@@ -498,21 +470,19 @@ function hideLabels(){
 
 
 function updateGraph(){
-        simulation.stop();
-        graph = graphstore = null;
-        loadinginfo.style('display', 'block');
-        updatingGraph.style('display', 'block');
-        let checked = [];
-        let boxes = d3.selectAll("input[type='checkbox']:checked")
-        boxes._groups[0].forEach(b=>{
-            checked.push(b.value)
-        });
-        console.log(checked);
-        stage.removeChildren();
-        let reqGraph = makeGraphReq(checked);
-        let reqGraphExtra = makeGraphExtraReq(checked);
-        // wait before launching
-        getGraphData(reqGraph,reqGraphExtra);
+    simulation.stop();
+    graph = graphstore = null;
+    loadinginfotext += "Updating Graph...\n";
+    loadinginfo.style('display', 'block').text(loadinginfotext);
+    let checked = [];
+    let boxes = d3.selectAll("input[type='checkbox']:checked")
+    boxes._groups[0].forEach(b=>{
+        checked.push(b.value)
+    });
+    console.log(checked);
+    stage.removeChildren();
+    // d3.select("#label").text("");
+    makeCountriesGraph(checked);
 }
 
 // TODO add element without destroying everything
