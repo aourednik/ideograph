@@ -29,7 +29,7 @@ let constructingGraph = d3.select("#constructingGraph");
 let updatingGraph = d3.select("#updatingGraph");
 let loadinginfotext = "";
 // neccessary globals
-let graph, graphstore, canvas ; 
+let graph, graphstore ; 
 
 // Make a list of countries
 let sparql = `
@@ -273,40 +273,13 @@ let simulation = d3.forceSimulation()
     .alphaDecay(0.005)
 ;
 
-let app = new PIXI.Application({
-    width : width, 
-    height : height ,
-    antialias: !0, 
-    transparent: !0, 
-    resolution: 1
-}); // Convenience class that automatically creates the renderer, ticker and root container.
-document.body.appendChild(app.view);
-/* let stage = new PIXI.Container();
-/* the Viewport plugin doesn't work.
-let viewport = new Viewport({ // 
-    screenWidth: window.innerWidth,
-    screenHeight: window.innerHeight,
-    worldWidth: width,
-    worldHeight: height,
-    interaction: app.renderer.plugins.interaction // the interaction module is important for wheel to work properly when renderer.view is placed or scaled
-})
-viewport // activate plugins
-    .drag()
-    .pinch()
-    .wheel()
-    .decelerate()
-stage.addChild(viewport)
-*/
-/*
-let renderer = PIXI.autoDetectRenderer({
-    width : width, 
-    height : height ,
-    antialias: !0, 
-    transparent: !0, 
-    resolution: 1
-});
+
+let stage = new PIXI.Container();
+let renderer = PIXI.autoDetectRenderer(
+    width, height,
+    {antialias: !0, transparent: !0, resolution: 1}
+);
 document.body.appendChild(renderer.view);
-*/
   
 function drawGraph(graph) {
     constructingGraph.style('display', 'block');
@@ -348,7 +321,6 @@ function drawGraph(graph) {
 
     let containerParties = new PIXI.Container();
     let containerIdeologies = new PIXI.Container();
-    // https://stackoverflow.com/questions/36678727/pixi-js-drag-and-drop-circle
     graph.nodes.forEach((node) => {
         node.gfx = new PIXI.Graphics();
         node.gfx.lineStyle(0.5, 0xFFFFFF);
@@ -356,19 +328,25 @@ function drawGraph(graph) {
         node.gfx.drawCircle(0, 0, node.radius );
         node.gfx.interactive = true;
         node.gfx.hitArea = new PIXI.Circle(0, 0, node.radius);
-        node.gfx.mouseover = function(ev) { showHoverLabel(node, ev)};
-        node.gfx.on("pointerdown", function(ev) { focus(node,ev);}); 
-        node.gfx
-           .on('mousedown', onDragStart)
-           .on('touchstart', onDragStart)
-           .on('mouseup', onDragEnd )
-           .on('mouseupoutside', onDragEnd )
-           .on('touchend', onDragEnd)
-           .on('touchendoutside', onDragEnd)
-           .on('mousemove', onDragMove)
-           .on('touchmove', onDragMove)
-        ;
-
+        node.gfx.mouseover = function(ev) { 
+            let nodex = node.x + 15;
+            let nodey = node.y - 15;
+            d3.select("#label")
+                .attr("style", "left:"+nodex+"px;top:"+nodey+"px;")
+                .select("a")
+                .attr("href",node.id.replace("wd:","http://www.wikidata.org/entity/"))
+                .attr("target","_blank")
+                .text(node.label)     
+        };
+        node.gfx.on("pointerdown", function(ev) { // should work also on touchscreen but does not
+            focus(node);
+        });
+        /*
+        node.gfx.on("tap", function(ev) { // touchscreen specific. Does not work.
+            focus(node);
+        });
+        */
+        
         
         if (node.group==1) containerParties.addChild(node.gfx);
         if (node.group==2) containerIdeologies.addChild(node.gfx);
@@ -391,28 +369,27 @@ function drawGraph(graph) {
     containerLinks.zIndex = 0;
     containerIdeologies.zIndex = 2;
     containerParties.zIndex = 1;
-    app.stage.addChild(containerLinks);
-    app.stage.addChild(containerParties);
-    app.stage.addChild(containerIdeologies);
-    app.stage.children.sort((itemA, itemB) => itemA.zIndex - itemB.zIndex);
+    stage.addChild(containerLinks);
+    stage.addChild(containerParties);
+    stage.addChild(containerIdeologies);
+    stage.children.sort((itemA, itemB) => itemA.zIndex - itemB.zIndex);
 
-    // dragging the nodes around is perhaps less useful than zooming
-    canvas = d3.select(app.view)
     /*
-    canvas.call(
-        d3.drag()
-            .container(app.view)
-            .subject(() => simulation.find(
-                d3.event.x, d3.event.y
-            ))
-            .on('start', dragstarted)
-            .on('drag', dragged)
-            .on('end', dragended)
-    )
+    stage.children.sort(function(a,b) {
+        if (a.fillColor == 11454440 ) return -1;
+        return 1;
+    }); 
     */
-    canvas.call(
-        d3.zoom().scaleExtent([0.5, 3]).on("zoom", zoomAndPan)
-    );
+
+    d3.select(renderer.view)
+        .call(
+            d3.drag()
+                .container(renderer.view)
+                .subject(() => simulation.find(d3.event.x, d3.event.y))
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended)
+        );
 
     // ticked()
     function ticked() {
@@ -431,34 +408,18 @@ function drawGraph(graph) {
             links.lineTo(target.x, target.y);
         });
         links.endFill();
-        // renderer.render(stage); // not necessary if using app.
-
+        renderer.render(stage);
         // when this point is reached, the notification about loading can be removed
         loadinginfo.style('display', 'none');
         constructingGraph.style('display', 'none');
         document.getElementById("upgradeGraphButton").disabled = false; 
     }
 
-    simulation.alphaTarget(0.1).restart(); // give it an initial push
+    simulation.alphaTarget(0.3).restart(); // give it an initial push
 }
 
-// DRAG, PAN AND ZOOM
-
-var transform = {k:1,x:0,y:0}; 
-function zoomAndPan() {
-    // console.log(d3.event.transform);
-    transform = d3.event.transform;
-    app.stage.scale.x = app.stage.scale.y = d3.event.transform.k;
-    // while (!dragging ) {
-    app.stage.x = transform.x;
-    app.stage.y = transform.y;
-    // }
-}
-
-//  d3 node drag
-/*
 function dragstarted() {
-    if (!d3.event.active) simulation.alphaTarget(0.5).restart();
+    if (!d3.event.active) simulation.alphaTarget(0.3).restart();
     d3.event.subject.fx = d3.event.subject.x;
     d3.event.subject.fy = d3.event.subject.y;
 }
@@ -473,41 +434,6 @@ function dragended() {
     d3.event.subject.fx = null;
     d3.event.subject.fy = null;
 }
-*/
-
-// pixi node drag
-let dragging = false;
-function onDragStart(event){
-    simulation.alphaTarget(0.1).restart();
-    this.data = event.data;
-    var newPosition = this.data.getLocalPosition(this.parent);
-    let node = graph.nodes.filter(n=>n.gfx == this)[0];
-    node.fx = newPosition.x;
-    node.fy = newPosition.y;
-    this.dragging = true;
-    dragging = true;
-}
-
-function onDragEnd(){
-    this.dragging = false;
-    dragging = false;
-    this.data = null;
-    let node = graph.nodes.filter(n=>n.gfx == this)[0];
-    node.fx = null;
-    node.fy = null;
-}
-
-function onDragMove(){
-    if (this.dragging){
-        var newPosition = this.data.getLocalPosition(this.parent);
-        let node = graph.nodes.filter(n=>n.gfx == this)[0];
-        node.fx = newPosition.x;
-        node.fy = newPosition.y;
-        // this.position.x = newPosition.x;
-        // this.position.y = newPosition.y;
-    }
-}
-
 
 function unSelectAllCountries(){
     let allBoxes = d3.selectAll("input[type='checkbox']");
@@ -519,36 +445,25 @@ function selectGroupAndUpdate(group){
     unSelectAllCountries();
     let allBoxes = d3.selectAll("input[type='checkbox']");
     allBoxes._groups[0].forEach(b=>{
+        console.log(b.id);
         if (group.includes(b.value)) b.checked = true
     });
     updateGraph();
 }
 
-// Graph hover and highlight -------
+// Graph highlight -------
 
 let rootSelectedNode = {};
 
-// https://observablehq.com/@d3/drag-zoom
-
-function showHoverLabel(node,ev) {
-    let nodex = (ev.data.global.x + 15) ;
-    let nodey = (ev.data.global.y - 15)  ;
-    d3.select("#label")
-        .attr("style", "left:"+nodex+"px;top:"+nodey+"px;")
-        .select("a")
-        .attr("href",node.id.replace("wd:","http://www.wikidata.org/entity/"))
-        .attr("target","_blank")
-        .text(node.label)  
-}
-
-function focus(d,ev) {
+function focus(d) {
     console.log(d);
-    showHoverLabel(d,ev); // nececessary for touch screen
     if (rootSelectedNode == d) {
         unfocus();
     } else {
         rootSelectedNode = d;
         markSelected(d);
+        hideLabels();
+        revealLabels();
     }
     updateColor();  
 }
@@ -556,7 +471,7 @@ function focus(d,ev) {
 function unfocus() {
     graph.nodes.forEach(n => {n.marked = true});
     graph.links.forEach(l => {l.marked = true});
-    rootSelectedNode = {};
+    hideLabels();
 }
 
 function markSelected(d){
@@ -587,11 +502,30 @@ function updateColor() {
     graph.links.filter(l => l.marked).forEach(l => l.alpha = 1);
 }
 
+function revealLabels(){
+    graph.nodes.filter(n => n.marked & n.group == 1 ).forEach(n => {
+        n.lgfx = new PIXI.Text(
+                n.label, {
+                    fontFamily : 'Maven Pro', 
+                    fontSize: 9 , 
+                    fill : n.gfx.fill, 
+                    align : 'center'
+                }
+            );
+        stage.addChild(n.lgfx);
+    });
+}
 
-
+function hideLabels(){
+    graph.nodes.filter(n => n.marked & n.group == 1 ).forEach(n => {
+        stage.removeChild(n.lgfx);
+        n.lgfx = null;
+    });
+}
 
 
 // Graph updates ------------
+
 
 function updateGraph(){
         document.getElementById("upgradeGraphButton").disabled = true; 
@@ -605,7 +539,7 @@ function updateGraph(){
             checked.push(b.value)
         });
         console.log(checked);
-        app.stage.removeChildren();
+        stage.removeChildren();
         let reqGraph = makeGraphReq(checked);
         let reqGraphExtra = makeGraphExtraReq(checked);
         // wait before launching

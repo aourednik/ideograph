@@ -4,4 +4,4 @@ __Ideograph__ is a visual tool for exploring ideologies of political parties. It
 
 Ideograph is licenced under [GNU GPL 3.0](https://www.gnu.org/licenses/gpl-3.0.html).
 
-![IdeographExample](img/eurosceptism.jpg)
+![IdeographExample](img/ideograph_environmentalism_Asia.png)

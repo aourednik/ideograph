@@ -2,14 +2,14 @@
 <html class="no-js" lang="en">
     <head>
         <meta charset="utf-8">
-        <title>Ideograph - explorer of ideologies and political parties on WikiData</title>
+        <title>IdeoGraph - explorer of ideologies and political parties on WikiData</title>
         <meta name="description" content="explorer of ideologies and political parties on WikiData">
         <meta name="theme-color" content="#000000">
         <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Maven Pro">
         <style>
             body {font-family: 'Maven Pro';}
             #label {position:absolute;font-weight: bold ; font-size:10px; width:100px; }
-            #countryselector {position:absolute;font-size:11px; top:50px;left:10px;height: 90%;overflow: scroll;}
+            #countryselector {position:absolute;font-size:11px; top:50px;left:10px;height: calc(100% - 30px);overflow: scroll;}
             #countryselectorbutton {position:absolute;font-size:11px; top:10px;left:10px;height:30px}
             #loadinginfo {position:absolute;top:40%;left:40%;padding:20px;background: black; color: azure; display:none; z-index:10000}
             #title {position: absolute;right:10px;top:10px;width:200px}
@@ -22,16 +22,27 @@
     <body>
         <!-- <script src="https://cdn.polyfill.io/v2/polyfill.min.js?features=default"></script> -->
         <div id="title">
-            <h1>Ideograph</h1>
+            <h1>IdeoGraph</h1>
             <div class="subtitle">explorer of ideologies and political parties on WikiData</div>
             <div class="author">CC BY <a href="https://ourednik.info">André Ourednik</a></div>
             <div class="sourcedocs">Source : WikiData (live requests to SPARQL endpoint)</div>
             <div class="sourcedocs"><a href="https://ourednik.info/maps/2021/08/13/ideograph-explore-ideologies-of-political-parties-with-spaqrl-requests-to-wikidata-d3-and-pixijs/" target="_blank">Documentation</a></div>
         </div>
         <div id="label"><a></a></div>
-        <div id="countryselectorbbutton">
-            <input type="button" value="Update Graph" onclick="updateGraph()">
-            <input type="button" value="Freeze Graph" onclick="simulation.stop()">
+        <div id="countryselectorbutton">
+            <div>
+            <input type="button" value="Unselect All" onclick="unSelectAllCountries()"  style="left: 0px;
+            top: 10px;font-family: inherit;">
+            <input id="upgradeGraphButton" type="button" value="Update Graph" onclick="updateGraph()" style="left: 50px;
+            top: 10px;font-family: inherit;">
+            <input type="button" value="Freeze Graph" onclick="simulation.stop()"  style="left: 100px;
+            top: 10px;font-family: inherit;">
+            </div>
+            <div id="groupSelector">
+                <a href="#" onClick="selectGroupAndUpdate(Europe)">Europe (democracies only)</a>
+                <a href="#" onClick="selectGroupAndUpdate(subsaharanAfrica)">Sub-Saharan Africa</a>
+                <a href="#" onClick="selectGroupAndUpdate(Asia)">Asia (without Russia)</a>
+            </div>
         </div>
         <div id="countryselector"></div>
         <div id="loadinginfo">
@@ -43,7 +54,9 @@
         </div>
         <script src="https://d3js.org/d3.v5.min.js"></script>
         <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/4.8.7/pixi.min.js"></script> -->
+        <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/5.1.3/pixi.min.js"></script> -->
         <script src="lib/pixi.min.js"></script>
+        <script src="lib/viewport.min.js"></script>
         <script src="lib/papaparse.min.js"></script>
         <script src="index.js"></script>
     </body>
