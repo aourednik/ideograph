@@ -32,21 +32,7 @@ let loadinginfotext = "";
 let graph, graphstore, canvas ; 
 
 // Make a list of countries
-let sparql = `
-    SELECT DISTINCT ?country ?countryLabel 
-    WHERE {
-        ?item wdt:P1142 ?linkTo .
-        ?linkTo wdt:P31 wd:Q12909644 . # keep only targets that are political ideologies
-        VALUES ?type { wd:Q7278  wd:Q24649 } # filter by these types of political actors
-        ?item wdt:P31 ?type .
-        ?item wdt:P17 ?country .
-        MINUS { ?item wdt:P576 ?abolitionDate } # exclude abolished parties
-        MINUS { ?country wdt:P576 ?countryAbolitionDate }. # exclude abolished countries
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en" . }
-    }
-`;
-let req = endpoint + encodeURIComponent(sparql);
-getCountryList(req);
+getCountryList();
 
 let Europe = [ // Europe
     "wd:Q1246", // Kosovo
@@ -60,7 +46,7 @@ let Europe = [ // Europe
     "wd:Q211", // Latvia
     "wd:Q212", // Ukraine
     "wd:Q213",
-    "wd:Q214", // Sloveni
+    "wd:Q214", // Slovenia
     "wd:Q215", // Slovakia
     "wd:Q217", // Moldova
     "wd:Q218", // Romania
@@ -100,6 +86,11 @@ let Europe = [ // Europe
 
 let subsaharanAfrica = ["wd:Q916","wd:Q962","wd:Q963","wd:Q965","wd:Q967","wd:Q1009","wd:Q929","wd:Q657","wd:Q974","wd:Q977","wd:Q983","wd:Q986","wd:Q1050","wd:Q115","wd:Q1000","wd:Q117","wd:Q1006","wd:Q1007","wd:Q1008","wd:Q114","wd:Q1013","wd:Q1014","wd:Q1019","wd:Q1020","wd:Q912","wd:Q1025","wd:Q1029","wd:Q1030","wd:Q1032","wd:Q1033","wd:Q971","wd:Q1041","wd:Q1045","wd:Q34754","wd:Q258","wd:Q1049","wd:Q924","wd:Q1005","wd:Q945","wd:Q1036","wd:Q953","wd:Q954"]
 let Asia = ["wd:Q851","wd:Q40362", "wd:Q244165", "wd:Q1027", "wd:Q826", "wd:Q801", "wd:Q574","wd:Q889", "wd:Q399", "wd:Q619829", "wd:Q227", "wd:Q398", "wd:Q902", "wd:Q917", "wd:Q424", "wd:Q326343", "wd:Q230", "wd:Q8646", "wd:Q668", "wd:Q252", "wd:Q17", "wd:Q810", "wd:Q232", "wd:Q41470", "wd:Q205047", "wd:Q817", "wd:Q813", "wd:Q819", "wd:Q822", "wd:Q14773", "wd:Q833", "wd:Q711", "wd:Q836", "wd:Q837", "wd:Q423", "wd:Q843", "wd:Q148", "wd:Q928", "wd:Q334", "wd:Q884", "wd:Q23427", "wd:Q854", "wd:Q219060", "wd:Q858", "wd:Q865", "wd:Q863", "wd:Q869", "wd:Q43", "wd:Q23681", "wd:Q874", "wd:Q1498", "wd:Q265", "wd:Q881"]
+let CanadaAndUS = ["wd:Q16","wd:Q30"];
+let LatinAmerica = ["wd:Q414","wd:Q21203","wd:Q242","wd:Q23635","wd:Q155","wd:Q5785","wd:Q298","wd:Q739","wd:Q800","wd:Q241","wd:Q784","wd:Q786","wd:Q736","wd:Q792","wd:Q769","wd:Q774","wd:Q734","wd:Q790","wd:Q783","wd:Q766","wd:Q96","wd:Q811","wd:Q804","wd:Q733","wd:Q419","wd:Q730","wd:Q754","wd:Q18221","wd:Q77","wd:Q717"];
+let RussiaAndBelarus = ["wd:Q184","wd:Q159"];
+let NorthAfrica =["wd:Q262","wd:Q79","wd:Q1016","wd:Q1028","wd:Q948"];
+let Oceania = [ "wd:Q408", "wd:Q26988", "wd:Q712", "wd:Q697", "wd:Q664", "wd:Q691", "wd:Q683", "wd:Q678", "wd:Q686"];
 
 // INITIALISATION
 document.getElementById("upgradeGraphButton").disabled = true; 
@@ -120,7 +111,7 @@ function makeGraphReq(countries) {
             VALUES ?country { ${countries.join(" ")} } #filter by selected countries
             ?item wdt:P17 ?country .
             MINUS { ?item wdt:P576 ?abolitionDate } # exclude abolished parties
-            SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en,fr,ca,ko,zh" . }
+            SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en,fr,es,ca,ko,zh" . }
         } 
     `;//.replaceAll("\n"," ").replaceAll("  "," ");
     let req = endpoint + encodeURIComponent(sparql);
@@ -149,16 +140,22 @@ function makeGraphExtraReq(countries) {
 async function fetchWikiData(req) {
     let response = await fetch(req, {headers: { "Accept": "text/csv"}});  
     let text = await response.text(); 
-    let data = Papa.parse(text,{header:true});
+    let data = Papa.parse(text,{
+        header:true,
+        skipEmptyLines:true,
+        transformHeader: function(h) {return h.trim();} // remove white spaces from header vars
+    });
     data = data.data;
     return data ;
 }
 
-// Constructs a list of countnries to choose from. 
-// On first run, launch graph construction.
-async function getCountryList(req) { 
+/** Constructs a list of countnries to choose from. 
+ * On first run, launch graph construction. */ 
+async function getCountryList() { 
     loadinginfo.style('display', 'block');
-    loadingCountries.style('display', 'block');  
+    loadingCountries.style('display', 'block');
+    let sparql = await (await fetch('sparql/CountryList.rq')).text();
+    let req = endpoint + encodeURIComponent(sparql);
     let countries = await fetchWikiData(req);
     // console.log(countries);
     countries.sort((a,b) => (a["countryLabel"] > b["countryLabel"]) ? 1 : ((b["countryLabel"] > a["countryLabel"]) ? -1 : 0))
@@ -193,10 +190,10 @@ let parties = []
 async function getGraphData(req, reqExtra) {   
     loadinginfo.style('display', 'block');
     loadingGraph.style('display', 'block');
-    let data = await fetchWikiData(req); 
+    let [data,dataExtra] = await Promise.all([
+        fetchWikiData(req), fetchWikiData(reqExtra)
+    ]); 
     loadingGraph.text("Fetching extra graph links from WikiData...");
-    // console.log("Fetching Extra Links");
-    dataExtra = await fetchWikiData(reqExtra); 
     // console.log(dataExtra);
     // let parties = []; // for later filtering out ideology nodes with no incoming parties
     let nodes = [];
@@ -252,8 +249,8 @@ async function getGraphData(req, reqExtra) {
 
 let width = screen.availWidth, height = screen.availHeight;
 function colour(num){
-    if (num > 1) return 0xFF0000
-    return 11454440 ;
+    if (num > 1) return 0xD01B1B
+    return 0x47abd8 ;
 }
 
 /*
@@ -270,7 +267,7 @@ let simulation = d3.forceSimulation()
     .force("x", d3.forceX(width / 2).strength(0.5))
     .force("y", d3.forceY(height / 2).strength(0.5))
     .force("collide",d3.forceCollide().radius(4.5)) // d => d.radius  is slow
-    .alphaDecay(0.005)
+    .alphaDecay(0.05)
 ;
 
 let app = new PIXI.Application({
@@ -281,32 +278,6 @@ let app = new PIXI.Application({
     resolution: 1
 }); // Convenience class that automatically creates the renderer, ticker and root container.
 document.body.appendChild(app.view);
-/* let stage = new PIXI.Container();
-/* the Viewport plugin doesn't work.
-let viewport = new Viewport({ // 
-    screenWidth: window.innerWidth,
-    screenHeight: window.innerHeight,
-    worldWidth: width,
-    worldHeight: height,
-    interaction: app.renderer.plugins.interaction // the interaction module is important for wheel to work properly when renderer.view is placed or scaled
-})
-viewport // activate plugins
-    .drag()
-    .pinch()
-    .wheel()
-    .decelerate()
-stage.addChild(viewport)
-*/
-/*
-let renderer = PIXI.autoDetectRenderer({
-    width : width, 
-    height : height ,
-    antialias: !0, 
-    transparent: !0, 
-    resolution: 1
-});
-document.body.appendChild(renderer.view);
-*/
   
 function drawGraph(graph) {
     constructingGraph.style('display', 'block');
@@ -334,10 +305,6 @@ function drawGraph(graph) {
     ).length > 0 );
 
     // Render with PIXI ------
-
-    // let layerLinks = new PIXI.display.Layer(); // does not work
-    // see more here: https://github.com/pixijs/layers/wiki
-
 
     // the LINKS are just one object that actually gets drawn in the ticks:
     let containerLinks = new PIXI.Container();
@@ -379,10 +346,11 @@ function drawGraph(graph) {
                 node.label, {
                     fontFamily : 'Maven Pro', 
                     fontSize: 9 + node.radius / 2, 
-                    fill : 0xFF0000, 
+                    fill : colour(node.group), 
                     align : 'center'
                 }
             );
+            node.lgfx.resolution = 2; // so that the text isn't blury
             containerIdeologies.addChild(node.lgfx);
         }
     });
@@ -398,18 +366,6 @@ function drawGraph(graph) {
 
     // dragging the nodes around is perhaps less useful than zooming
     canvas = d3.select(app.view)
-    /*
-    canvas.call(
-        d3.drag()
-            .container(app.view)
-            .subject(() => simulation.find(
-                d3.event.x, d3.event.y
-            ))
-            .on('start', dragstarted)
-            .on('drag', dragged)
-            .on('end', dragended)
-    )
-    */
     canvas.call(
         d3.zoom().scaleExtent([0.5, 3]).on("zoom", zoomAndPan)
     );
@@ -439,7 +395,7 @@ function drawGraph(graph) {
         document.getElementById("upgradeGraphButton").disabled = false; 
     }
 
-    simulation.alphaTarget(0.1).restart(); // give it an initial push
+    simulation.alphaTarget(0.05).restart(); // give it an initial push
 }
 
 // DRAG, PAN AND ZOOM
@@ -449,48 +405,28 @@ function zoomAndPan() {
     // console.log(d3.event.transform);
     transform = d3.event.transform;
     app.stage.scale.x = app.stage.scale.y = d3.event.transform.k;
-    // while (!dragging ) {
+    if(!draggingNode ) {
     app.stage.x = transform.x;
     app.stage.y = transform.y;
-    // }
+    }
 }
-
-//  d3 node drag
-/*
-function dragstarted() {
-    if (!d3.event.active) simulation.alphaTarget(0.5).restart();
-    d3.event.subject.fx = d3.event.subject.x;
-    d3.event.subject.fy = d3.event.subject.y;
-}
-
-function dragged() {
-    d3.event.subject.fx = d3.event.x;
-    d3.event.subject.fy = d3.event.y;
-}
-
-function dragended() {
-    if (!d3.event.active) simulation.alphaTarget(0);
-    d3.event.subject.fx = null;
-    d3.event.subject.fy = null;
-}
-*/
 
 // pixi node drag
-let dragging = false;
+let draggingNode = false;
 function onDragStart(event){
-    simulation.alphaTarget(0.1).restart();
+    simulation.alphaTarget(0.05).restart(); // the higer, the more sensitive and excited.
     this.data = event.data;
     var newPosition = this.data.getLocalPosition(this.parent);
     let node = graph.nodes.filter(n=>n.gfx == this)[0];
     node.fx = newPosition.x;
     node.fy = newPosition.y;
     this.dragging = true;
-    dragging = true;
+    draggingNode = true;
 }
 
 function onDragEnd(){
     this.dragging = false;
-    dragging = false;
+    draggingNode = false;
     this.data = null;
     let node = graph.nodes.filter(n=>n.gfx == this)[0];
     node.fx = null;
@@ -503,8 +439,6 @@ function onDragMove(){
         let node = graph.nodes.filter(n=>n.gfx == this)[0];
         node.fx = newPosition.x;
         node.fy = newPosition.y;
-        // this.position.x = newPosition.x;
-        // this.position.y = newPosition.y;
     }
 }
 
@@ -588,9 +522,6 @@ function updateColor() {
 }
 
 
-
-
-
 // Graph updates ------------
 
 function updateGraph(){
@@ -628,4 +559,3 @@ function restoreGraph(){
         l.target = graph.nodes.filter(n=> n.id == l.target.id)[0];
     });
 }
-
