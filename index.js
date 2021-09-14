@@ -34,49 +34,36 @@ let graph, graphstore, canvas ;
 // Make a list of countries
 getCountryList();
 
-let Europe = [ // Europe
-    "wd:Q1246", // Kosovo
-    "wd:Q142",
-    "wd:Q145", // UK
-    "wd:Q183",
-    "wd:Q189", // Iceland
+let Europe = ["wd:Q1246", // Kosovo
+    "wd:Q142", "wd:Q145", // UK
+    "wd:Q183", "wd:Q189", // Iceland
     "wd:Q191", // Estonia
     "wd:Q20", // Norway
     "wd:Q25", // Wales
     "wd:Q211", // Latvia
     "wd:Q212", // Ukraine
-    "wd:Q213",
-    "wd:Q214", // Slovenia
+    "wd:Q213", "wd:Q214", // Slovenia
     "wd:Q215", // Slovakia
     "wd:Q217", // Moldova
     "wd:Q218", // Romania
-    "wd:Q219",
-    "wd:Q221", // Northern Macedonia
+    "wd:Q219", "wd:Q221", // Northern Macedonia
     "wd:Q222", // Albania
     "wd:Q223", // Greenland
-    "wd:Q224",
-    "wd:Q225",
-    "wd:Q228", // Andora
-    "wd:Q229",
-    "wd:Q233", // Malta
+    "wd:Q224", "wd:Q225", "wd:Q228", // Andora
+    "wd:Q229", "wd:Q233", // Malta
     "wd:Q235", // Monaco
     "wd:Q236", // Montenegro
     "wd:Q238", // San Marino
     "wd:Q27", // Ireland
     "wd:Q28", // Hungary
     "wd:Q29", // Spain
-    "wd:Q31",
-    "wd:Q32", // Luxembourg
+    "wd:Q31", "wd:Q32", // Luxembourg
     "wd:Q33", // Finlannd
     "wd:Q34", // Sweden
     "wd:Q347", // Lichtenstein
-    "wd:Q35",
-    "wd:Q36", // Poland
+    "wd:Q35", "wd:Q36", // Poland
     "wd:Q37", // Lituania
-    "wd:Q38",
-    "wd:Q39",
-    "wd:Q40",
-    "wd:Q403", // Serbia
+    "wd:Q38","wd:Q39","wd:Q40","wd:Q403", // Serbia
     "wd:Q41" ,// Greece
     "wd:Q45", // Portugal
     "wd:Q4628", // Faroe Islands
@@ -94,49 +81,11 @@ let Oceania = [ "wd:Q408", "wd:Q26988", "wd:Q712", "wd:Q697", "wd:Q664", "wd:Q69
 
 // INITIALISATION
 document.getElementById("upgradeGraphButton").disabled = true; 
-let reqGraph = makeGraphReq(Europe);
-let reqGraphExtra = makeGraphExtraReq(Europe);
-getGraphData(reqGraph,reqGraphExtra);
+getGraphData(Europe);
 
-function makeGraphReq(countries) {
-    // VALUES ?ideatype { wd:Q12909644 wd:Q179805 wd:Q7257 wd:Q5333510 wd:Q780687}  #  ideologie ou philosophie politique ou économique
-    // ?linkTo wdt:P31 ?ideatype .
-    sparql = `
-        SELECT DISTINCT ?item ?itemLabel ?country ?countryLabel ?linkTo ?linkToLabel
-        WHERE {
-            ?item wdt:P1142 ?linkTo . # alternative path makes link to ideology superclass
-            ?linkTo wdt:P31 wd:Q12909644 . # take "political ideology" only
-            VALUES ?type { wd:Q7278  wd:Q24649 } # filter by these types of political actors
-            ?item wdt:P31 ?type .
-            VALUES ?country { ${countries.join(" ")} } #filter by selected countries
-            ?item wdt:P17 ?country .
-            MINUS { ?item wdt:P576 ?abolitionDate } # exclude abolished parties
-            SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en,fr,es,ca,ko,zh" . }
-        } 
-    `;//.replaceAll("\n"," ").replaceAll("  "," ");
-    let req = endpoint + encodeURIComponent(sparql);
-    return req ;
-}
-
-function makeGraphExtraReq(countries) {
-    sparql = `
-    SELECT DISTINCT ?linkTo ?linkToLabel ?superLinkTo ?superLinkToLabel
-    WHERE {
-      ?item wdt:P1142 ?linkTo . # alternative path makes link to ideology superclass
-      ?linkTo wdt:P279+ ?superLinkTo .
-      ?superLinkTo wdt:P31|wdt:P279 wd:Q12909644 . # take political ideology only
-      VALUES ?type { wd:Q7278  wd:Q24649 } # filter by these types of political actors
-      ?item wdt:P31|wdt:P279 ?type .
-      ?item wdt:P17 ?country . 
-      MINUS { ?item wdt:P576 ?abolitionDate } # exclude abolished parties
-      SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en,fr,es,ca,ko,zh" . }
-      FILTER (?country IN (${countries.join(", ")}) ) # here, this is faster than using VALUES. Why?
-    } 
-    `;
-    let req = endpoint + encodeURIComponent(sparql);
-    return req ;
-}
-
+/** Fetches csv data wrom wikidata 
+ * @param req a URI ecoded SPARQL query 
+*/
 async function fetchWikiData(req) {
     let response = await fetch(req, {headers: { "Accept": "text/csv"}});  
     let text = await response.text(); 
@@ -155,7 +104,7 @@ async function getCountryList() {
     loadinginfo.style('display', 'block');
     loadingCountries.style('display', 'block');
     let sparql = await (await fetch('sparql/CountryList.rq')).text();
-    let req = endpoint + encodeURIComponent(sparql);
+    let req = endpoint + encodeURIComponent(sparql.replace("/#.*/gm",''));
     let countries = await fetchWikiData(req);
     // console.log(countries);
     countries.sort((a,b) => (a["countryLabel"] > b["countryLabel"]) ? 1 : ((b["countryLabel"] > a["countryLabel"]) ? -1 : 0))
@@ -187,9 +136,16 @@ async function getCountryList() {
 
 let dataExtra; 
 let parties = []
-async function getGraphData(req, reqExtra) {   
+/** Fetches the graph data from wikidata 
+ * @param countries An array of countries
+*/
+async function getGraphData(countries) {   
     loadinginfo.style('display', 'block');
     loadingGraph.style('display', 'block');
+    let sparql1 = await (await fetch('sparql/GraphReq.rq')).text();
+    let req = endpoint + encodeURIComponent(sparql1.replace("JSVAR:COUNTRIES",countries.join(" ")).replace("/#.*/gm",''));
+    let sparql2 = await (await fetch('sparql/GraphExtraReq.rq')).text();
+    let reqExtra = endpoint + encodeURIComponent(sparql2.replace("JSVAR:COUNTRIES",countries.join(" ")).replace("/#.*/gm",''));
     let [data,dataExtra] = await Promise.all([
         fetchWikiData(req), fetchWikiData(reqExtra)
     ]); 
@@ -278,7 +234,10 @@ let app = new PIXI.Application({
     resolution: 1
 }); // Convenience class that automatically creates the renderer, ticker and root container.
 document.body.appendChild(app.view);
-  
+
+/** Draws the graph using D3js and PIXIjs 
+ * @param graph A JSON encoded set of nodes and links
+*/
 function drawGraph(graph) {
     constructingGraph.style('display', 'block');
     console.log(graph);
@@ -524,6 +483,7 @@ function updateColor() {
 
 // Graph updates ------------
 
+/** Updates the graph with data from a new set of countries */
 function updateGraph(){
         document.getElementById("upgradeGraphButton").disabled = true; 
         simulation.stop();
@@ -537,10 +497,8 @@ function updateGraph(){
         });
         console.log(checked);
         app.stage.removeChildren();
-        let reqGraph = makeGraphReq(checked);
-        let reqGraphExtra = makeGraphExtraReq(checked);
         // wait before launching
-        getGraphData(reqGraph,reqGraphExtra);
+        getGraphData(checked);
 }
 
 // TODO add element without destroying everything
